@@ -3,10 +3,12 @@ extends Node2D
 const NODE_R := 24.0
 const COLS := 9
 const ROWS := 6
-const ORIGIN := Vector2(120, 155)
-# Pointy-top hex-node spacing. Odd rows are offset half a column.
+const ORIGIN := Vector2(85, 150)
+# Underlying hex coordinates keep EVE-style six-neighbour logic, while the
+# visible board is carved into an irregular connected graph.
 const HEX_X := 92.0
 const HEX_Y := 76.0
+const KEEP_NODE_CHANCE := 0.72
 
 enum Kind { EMPTY, DEFENSE, CORE, UTILITY }
 
@@ -91,8 +93,7 @@ func new_hack():
     nodes.clear(); edges.clear()
     clue_flash.clear(); clue_timer = 0.0
 
-    # Build a regular offset hex grid: each interior node has six neighbours.
-    # This makes the distance clues correspond to the topology you can see.
+    # Build the full offset-hex coordinate set first.
     for r in ROWS:
         for c in COLS:
             var id = r * COLS + c
@@ -100,31 +101,103 @@ func new_hack():
             nodes.append({
                 "id":id, "p":ORIGIN + Vector2(c * HEX_X + x_offset, r * HEX_Y),
                 "kind":Kind.EMPTY, "revealed":false, "visited":false,
-                "dead":false, "coh":0, "str":0, "used":false
+                "dead":false, "coh":0, "str":0, "used":false, "active":true
             })
 
-    # Horizontal links plus the two downward diagonals appropriate to each row.
-    # Adding only downward links avoids duplicate edges.
+    # Full hex adjacency is used as the palette from which we carve the board.
+    var full_edges:Array = []
     for r in ROWS:
         for c in COLS:
             var a = r * COLS + c
             if c < COLS - 1:
-                edges.append(Vector2i(a, a + 1))
+                full_edges.append(Vector2i(a, a + 1))
             if r < ROWS - 1:
-                edges.append(Vector2i(a, (r + 1) * COLS + c))
+                full_edges.append(Vector2i(a, (r + 1) * COLS + c))
                 if (r & 1) == 0:
                     if c > 0:
-                        edges.append(Vector2i(a, (r + 1) * COLS + c - 1))
+                        full_edges.append(Vector2i(a, (r + 1) * COLS + c - 1))
                 else:
                     if c < COLS - 1:
-                        edges.append(Vector2i(a, (r + 1) * COLS + c + 1))
+                        full_edges.append(Vector2i(a, (r + 1) * COLS + c + 1))
 
+    # Start near the left edge, then grow one connected organic region. This
+    # produces branches, bottlenecks, triangles and dense pockets rather than
+    # a perfect honeycomb.
     start_id = (ROWS / 2) * COLS
+    var active:Dictionary = {start_id: true}
+    var frontier:Array = [start_id]
+    var desired = rng.randi_range(32, 42)
+    while frontier.size() > 0 and active.size() < desired:
+        var base:int = frontier[rng.randi_range(0, frontier.size() - 1)]
+        var choices:Array = []
+        for e in full_edges:
+            var other = -1
+            if e.x == base: other = e.y
+            elif e.y == base: other = e.x
+            if other >= 0 and not active.has(other):
+                choices.append(other)
+        if choices.is_empty():
+            frontier.erase(base)
+            continue
+        choices.shuffle()
+        var add_count = 1
+        if rng.randf() < 0.38 and choices.size() > 1:
+            add_count = 2
+        for i in min(add_count, choices.size()):
+            var id:int = choices[i]
+            active[id] = true
+            frontier.append(id)
+
+    # If random growth stopped early, attach neighbouring cells until the
+    # target size is reached.
+    while active.size() < desired:
+        var added = false
+        for e in full_edges:
+            if active.has(e.x) and not active.has(e.y):
+                active[e.y] = true; added = true; break
+            if active.has(e.y) and not active.has(e.x):
+                active[e.x] = true; added = true; break
+        if not added:
+            break
+
+    # Hide unused coordinates and keep most possible links between active
+    # cells. A spanning-tree pass below guarantees the visible graph connects.
+    for n in nodes:
+        n.active = active.has(n.id)
+    for e in full_edges:
+        if active.has(e.x) and active.has(e.y) and rng.randf() < 0.78:
+            edges.append(e)
+
+    # Guarantee connectivity by adding missing links from the full hex graph.
+    var reached:Dictionary = {start_id:true}
+    var q:Array = [start_id]
+    while not q.is_empty():
+        var cur:int = q.pop_front()
+        for e in edges:
+            var nxt = -1
+            if e.x == cur: nxt = e.y
+            elif e.y == cur: nxt = e.x
+            if nxt >= 0 and not reached.has(nxt):
+                reached[nxt] = true; q.append(nxt)
+    while reached.size() < active.size():
+        var bridged = false
+        for e in full_edges:
+            if not active.has(e.x) or not active.has(e.y):
+                continue
+            if reached.has(e.x) and not reached.has(e.y):
+                edges.append(e); reached[e.y] = true; bridged = true; break
+            if reached.has(e.y) and not reached.has(e.x):
+                edges.append(e); reached[e.x] = true; bridged = true; break
+        if not bridged:
+            break
+
     nodes[start_id].revealed = true
     nodes[start_id].visited = true
 
-    var candidates = range(nodes.size())
-    candidates.erase(start_id)
+    var candidates:Array = []
+    for n in nodes:
+        if n.active and n.id != start_id:
+            candidates.append(n.id)
 
     # Rule of 8: prefer a System Core at least eight graph steps from the start.
     var core_candidates:Array = []
@@ -270,9 +343,9 @@ func _combat(id:int):
 func _draw():
     for e in edges:
         if nodes[e.x].revealed and nodes[e.y].revealed:
-            draw_line(nodes[e.x].p, nodes[e.y].p, Color(0.32,0.38,0.44), 2.0)
+            draw_line(nodes[e.x].p, nodes[e.y].p, Color(0.20,0.43,0.48), 2.0)
     for n in nodes:
-        if not n.revealed: continue
+        if not n.active or not n.revealed: continue
         var col = Color(0.25,0.30,0.35)
         if n.id == start_id: col = Color(0.20,0.65,0.35)
         if n.visited: col = Color(0.28,0.48,0.62)
