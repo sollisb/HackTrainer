@@ -174,24 +174,36 @@ func _input(event):
 
 func _activate(id:int):
     var n = nodes[id]
-    n.visited = true
-    match n.kind:
-        Kind.EMPTY:
-            var clue = _distance_clue(id)
-            clue_flash[id] = clue
-            clue_timer = 2.2
-            status = "Clear node — distance clue %d. Smaller numbers lead toward something useful." % clue
-            _reveal_neighbors(id)
-        Kind.UTILITY:
-            if not n.used:
+
+    # Discovering a hostile subsystem is free. The first click only exposes it;
+    # a later click attacks it. This keeps exploration separate from combat.
+    if not n.visited:
+        n.visited = true
+        match n.kind:
+            Kind.EMPTY:
+                var clue = _distance_clue(id)
+                clue_flash[id] = clue
+                clue_timer = 2.2
+                status = "Clear node — distance clue %d. Smaller numbers lead toward something useful." % clue
+                _reveal_neighbors(id)
+            Kind.UTILITY:
                 var heal = [28,24,20][difficulty]
                 virus_coherence = min(max_coherence, virus_coherence + heal)
-                n.used = true; n.dead = true
+                n.used = true
+                n.dead = true
                 status = "Utility found: +%d Virus Coherence." % heal
                 _reveal_neighbors(id)
-        Kind.DEFENSE, Kind.CORE:
-            _combat(id)
-    queue_redraw()
+            Kind.DEFENSE:
+                status = "Defensive subsystem discovered. Click it again to attack."
+            Kind.CORE:
+                status = "SYSTEM CORE discovered. Click it again to attack."
+        queue_redraw()
+        return
+
+    # A revealed hostile subsystem is attacked only by an explicit later click.
+    if n.kind == Kind.DEFENSE or n.kind == Kind.CORE:
+        _combat(id)
+        queue_redraw()
 
 func _distance_clue(from_id:int) -> int:
     # EVE-style clue: graph distance to nearest Core, Utility or Data Cache.
