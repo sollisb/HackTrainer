@@ -256,12 +256,19 @@ func _reveal_neighbors(id:int):
     for n in _neighbors(id): nodes[n].revealed = true
 
 func _can_click(id:int) -> bool:
-    if won or lost or not nodes[id].active or nodes[id].dead:
+    if won or lost or not nodes[id].active:
         return false
-    if nodes[id].visited and nodes[id].kind == Kind.EMPTY:
+
+    # Cleared/consumed nodes form the traversable path but are not actions.
+    if nodes[id].dead:
         return false
-    for n in _neighbors(id):
-        if nodes[n].visited and (nodes[n].kind == Kind.EMPTY or nodes[n].dead or nodes[n].kind == Kind.UTILITY):
+    if nodes[id].visited and (nodes[id].kind == Kind.EMPTY or nodes[id].kind == Kind.UTILITY):
+        return false
+
+    # A node is actionable only when it borders the cleared path.
+    for neighbor_id in _neighbors(id):
+        var neighbor = nodes[neighbor_id]
+        if neighbor.visited and (neighbor.kind == Kind.EMPTY or neighbor.dead or neighbor.kind == Kind.UTILITY):
             return true
     return id == start_id
 
@@ -354,8 +361,8 @@ func _draw():
     for n in nodes:
         if not n.active or not n.revealed: continue
         var col = Color(0.10,0.13,0.14)
-        if n.id == start_id: col = Color(0.12,0.42,0.46)
         if n.visited: col = Color(0.12,0.34,0.38)
+        if n.id == start_id: col = Color(0.12,0.42,0.46)
         if n.kind == Kind.DEFENSE and n.visited: col = Color(0.78,0.30,0.24)
         if n.kind == Kind.CORE and n.visited: col = Color(0.85,0.55,0.16)
         if n.kind == Kind.UTILITY and n.visited: col = Color(0.38,0.68,0.72)
@@ -363,6 +370,8 @@ func _draw():
         draw_circle(n.p, NODE_R, col)
         draw_circle(n.p, NODE_R, Color(0.32,0.68,0.69), false, 1.2)
         var txt = ""
+        if not n.visited:
+            txt = "·" if _can_click(n.id) else "•"
         if clue_flash.has(n.id):
             txt = str(clue_flash[n.id])
         elif n.visited:
@@ -394,5 +403,5 @@ func _training_hint() -> String:
 
     var empties = options.filter(func(x): return not x.visited or x.kind == Kind.EMPTY)
     if empties.size() > 0:
-        return "Follow decreasing distance clues and prefer complete 6-neighbour nodes when available."
+        return "Bright centre dots are reachable now. Follow decreasing clues and prefer complete 6-neighbour nodes."
     return "If a defense blocks the only route, attack it; watch Coherence before committing."
