@@ -125,14 +125,33 @@ func new_hack():
 
     var candidates = range(nodes.size())
     candidates.erase(start_id)
-    var core_id = candidates[rng.randi_range(0,candidates.size()-1)]
+
+    # Rule of 8: prefer a System Core at least eight graph steps from the start.
+    var core_candidates:Array = []
+    for id in candidates:
+        if _shortest_distance(start_id, [id]) >= 8:
+            core_candidates.append(id)
+    if core_candidates.is_empty():
+        core_candidates = candidates.duplicate()
+    var core_id = core_candidates[rng.randi_range(0, core_candidates.size()-1)]
     nodes[core_id].kind = Kind.CORE
     nodes[core_id].coh = [35,50,65][difficulty]
     nodes[core_id].str = [10,14,18][difficulty]
 
+    # Rule of Six: a complete six-neighbour node is safe from a defensive
+    # subsystem unless that node is adjacent to the System Core.
+    var defense_candidates:Array = []
+    for id in candidates:
+        if id == core_id:
+            continue
+        var complete = _neighbors(id).size() == 6
+        var adjacent_to_core = core_id in _neighbors(id)
+        if not complete or adjacent_to_core:
+            defense_candidates.append(id)
+
     var defenses = [7,10,13][difficulty]
     for i in defenses:
-        var id = _random_empty(candidates)
+        var id = _random_empty(defense_candidates)
         nodes[id].kind = Kind.DEFENSE
         nodes[id].coh = rng.randi_range(22 + difficulty*7, 38 + difficulty*12)
         nodes[id].str = rng.randi_range(7 + difficulty*2, 12 + difficulty*4)
@@ -285,7 +304,15 @@ func _draw():
 func _training_hint() -> String:
     var options=[]
     for n in nodes:
-        if _can_click(n.id): options.append(n)
+        if _can_click(n.id):
+            options.append(n)
+
+    # Teach the useful consequence without exposing hidden contents.
+    for n in options:
+        if not n.visited and _neighbors(n.id).size() == 6:
+            return "Rule of Six: a node with all 6 neighbours is normally safe from defenses. Exception: if it borders the Core."
+
     var empties = options.filter(func(x): return not x.visited or x.kind == Kind.EMPTY)
-    if empties.size() > 0: return "Explore unrevealed routes before fighting defenses when you have a choice."
+    if empties.size() > 0:
+        return "Follow decreasing distance clues and prefer complete 6-neighbour nodes when available."
     return "If a defense blocks the only route, attack it; watch Coherence before committing."
