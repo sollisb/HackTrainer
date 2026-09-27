@@ -1,13 +1,13 @@
 extends Node2D
 
-const NODE_R := 24.0
+const NODE_R := 13.0
 const COLS := 9
 const ROWS := 6
-const ORIGIN := Vector2(85, 150)
+const ORIGIN := Vector2(75, 145)
 # Underlying hex coordinates keep EVE-style six-neighbour logic, while the
 # visible board is carved into an irregular connected graph.
-const HEX_X := 92.0
-const HEX_Y := 76.0
+const HEX_X := 105.0
+const HEX_Y := 82.0
 const KEEP_NODE_CHANCE := 0.72
 
 enum Kind { EMPTY, DEFENSE, CORE, UTILITY }
@@ -99,7 +99,8 @@ func new_hack():
             var id = r * COLS + c
             var x_offset = HEX_X * 0.5 if (r & 1) == 1 else 0.0
             nodes.append({
-                "id":id, "p":ORIGIN + Vector2(c * HEX_X + x_offset, r * HEX_Y),
+                "id":id, "p":ORIGIN + Vector2(c * HEX_X + x_offset, r * HEX_Y)
+                    + Vector2(rng.randf_range(-22.0, 22.0), rng.randf_range(-16.0, 16.0)),
                 "kind":Kind.EMPTY, "revealed":false, "visited":false,
                 "dead":false, "coh":0, "str":0, "used":false, "active":true
             })
@@ -349,19 +350,19 @@ func _combat(id:int):
 func _draw():
     for e in edges:
         if nodes[e.x].active and nodes[e.y].active:
-            draw_line(nodes[e.x].p, nodes[e.y].p, Color(0.20,0.43,0.48), 2.0)
+            draw_line(nodes[e.x].p, nodes[e.y].p, Color(0.18,0.42,0.43,0.78), 1.25)
     for n in nodes:
         if not n.active or not n.revealed: continue
-        var col = Color(0.25,0.30,0.35)
-        if n.id == start_id: col = Color(0.20,0.65,0.35)
-        if n.visited: col = Color(0.28,0.48,0.62)
+        var col = Color(0.10,0.13,0.14)
+        if n.id == start_id: col = Color(0.12,0.42,0.46)
+        if n.visited: col = Color(0.12,0.34,0.38)
         if n.kind == Kind.DEFENSE and n.visited: col = Color(0.78,0.30,0.24)
         if n.kind == Kind.CORE and n.visited: col = Color(0.85,0.55,0.16)
         if n.kind == Kind.UTILITY and n.visited: col = Color(0.38,0.68,0.72)
         if n.dead: col = Color(0.20,0.22,0.24)
         draw_circle(n.p, NODE_R, col)
-        draw_circle(n.p, NODE_R, Color(0.75,0.80,0.84), false, 2.0)
-        var txt = "?"
+        draw_circle(n.p, NODE_R, Color(0.32,0.68,0.69), false, 1.2)
+        var txt = ""
         if clue_flash.has(n.id):
             txt = str(clue_flash[n.id])
         elif n.visited:
@@ -370,9 +371,9 @@ func _draw():
                 Kind.DEFENSE: txt = "D" if not n.dead else "×"
                 Kind.CORE: txt = "CORE" if not n.dead else "✓"
                 Kind.UTILITY: txt = "+" if not n.used else "✓"
-        draw_string(ThemeDB.fallback_font, n.p + Vector2(-16,5), txt, HORIZONTAL_ALIGNMENT_CENTER, 32, 13, Color.WHITE)
+        draw_string(ThemeDB.fallback_font, n.p + Vector2(-10,4), txt, HORIZONTAL_ALIGNMENT_CENTER, 20, 10, Color(0.90,0.96,0.94))
         if n.visited and (n.kind == Kind.DEFENSE or n.kind == Kind.CORE) and not n.dead:
-            draw_string(ThemeDB.fallback_font, n.p + Vector2(-22,39), "%d HP / %d DMG" % [max(0,n.coh),n.str], HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.9,0.9,0.9))
+            draw_string(ThemeDB.fallback_font, n.p + Vector2(-22,27), "%d HP / %d DMG" % [max(0,n.coh),n.str], HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.9,0.9,0.9))
 
     draw_string(ThemeDB.fallback_font, Vector2(30,665), "Virus: %d/%d coherence     Strength: %d" % [virus_coherence,max_coherence,virus_strength], HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(0.88,0.9,0.92))
     draw_string(ThemeDB.fallback_font, Vector2(430,665), status, HORIZONTAL_ALIGNMENT_LEFT, 630, 16, Color(0.88,0.9,0.92))
