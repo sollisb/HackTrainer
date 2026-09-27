@@ -89,7 +89,7 @@ func new_hack():
     virus_coherence = max_coherence
     won = false
     lost = false
-    status = "Start at the green node. Explore outward and hunt the System Core."
+    status = "Full network visible. Explore connected nodes and hunt the System Core."
     nodes.clear(); edges.clear()
     clue_flash.clear(); clue_timer = 0.0
 
@@ -191,7 +191,11 @@ func new_hack():
         if not bridged:
             break
 
-    nodes[start_id].revealed = true
+    # EVE shows the full network topology from the start. "revealed" means
+    # visible on the board; "visited" still means its contents are known.
+    for n in nodes:
+        if n.active:
+            n.revealed = true
     nodes[start_id].visited = true
 
     var candidates:Array = []
@@ -231,7 +235,6 @@ func new_hack():
     for i in 5:
         var id = _random_empty(candidates)
         nodes[id].kind = Kind.UTILITY
-    _reveal_neighbors(start_id)
     queue_redraw()
 
 func _random_empty(candidates:Array) -> int:
@@ -252,10 +255,13 @@ func _reveal_neighbors(id:int):
     for n in _neighbors(id): nodes[n].revealed = true
 
 func _can_click(id:int) -> bool:
-    if won or lost or not nodes[id].revealed or nodes[id].dead: return false
-    if nodes[id].visited and nodes[id].kind == Kind.EMPTY: return false
+    if won or lost or not nodes[id].active or nodes[id].dead:
+        return false
+    if nodes[id].visited and nodes[id].kind == Kind.EMPTY:
+        return false
     for n in _neighbors(id):
-        if nodes[n].visited and (nodes[n].kind == Kind.EMPTY or nodes[n].dead or nodes[n].kind == Kind.UTILITY): return true
+        if nodes[n].visited and (nodes[n].kind == Kind.EMPTY or nodes[n].dead or nodes[n].kind == Kind.UTILITY):
+            return true
     return id == start_id
 
 func _input(event):
@@ -342,7 +348,7 @@ func _combat(id:int):
 
 func _draw():
     for e in edges:
-        if nodes[e.x].revealed and nodes[e.y].revealed:
+        if nodes[e.x].active and nodes[e.y].active:
             draw_line(nodes[e.x].p, nodes[e.y].p, Color(0.20,0.43,0.48), 2.0)
     for n in nodes:
         if not n.active or not n.revealed: continue
