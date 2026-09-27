@@ -17,6 +17,8 @@ var max_coherence := 80
 var training := true
 var difficulty := 1
 var status := ""
+var clue_flash:Dictionary = {}
+var clue_timer := 0.0
 var won := false
 var lost := false
 var rng := RandomNumberGenerator.new()
@@ -27,6 +29,7 @@ var diff_box:OptionButton
 
 func _ready():
     rng.randomize()
+    set_process(true)
     _make_ui()
     new_hack()
 
@@ -68,6 +71,13 @@ func _make_ui():
     help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     add_child(help)
 
+func _process(delta):
+    if clue_timer > 0.0:
+        clue_timer -= delta
+        if clue_timer <= 0.0:
+            clue_flash.clear()
+            queue_redraw()
+
 func new_hack():
     difficulty = diff_box.selected if diff_box else 1
     virus_strength = [24,20,18][difficulty]
@@ -77,6 +87,7 @@ func new_hack():
     lost = false
     status = "Start at the green node. Explore outward and hunt the System Core."
     nodes.clear(); edges.clear()
+    clue_flash.clear(); clue_timer = 0.0
 
     for r in ROWS:
         for c in COLS:
@@ -151,7 +162,10 @@ func _activate(id:int):
     n.visited = true
     match n.kind:
         Kind.EMPTY:
-            status = "Clear node. Keep exploring."
+            var clue = _distance_clue(id)
+            clue_flash[id] = clue
+            clue_timer = 2.2
+            status = "Clear node — distance clue %d. Smaller numbers lead toward something useful." % clue
             _reveal_neighbors(id)
         Kind.UTILITY:
             if not n.used:
@@ -163,6 +177,33 @@ func _activate(id:int):
         Kind.DEFENSE, Kind.CORE:
             _combat(id)
     queue_redraw()
+
+func _distance_clue(from_id:int) -> int:
+    # EVE-style clue: graph distance to nearest Core, Utility or Data Cache.
+    # Defensive subsystems deliberately do not count.
+    var targets:Array = []
+    for n in nodes:
+        if n.kind == Kind.CORE or n.kind == Kind.UTILITY:
+            targets.append(n.id)
+    var d = _shortest_distance(from_id, targets)
+    return min(5, d) if d >= 0 else 5
+
+func _shortest_distance(from_id:int, targets:Array) -> int:
+    if from_id in targets:
+        return 0
+    var q:Array = [from_id]
+    var dist:Dictionary = {from_id: 0}
+    while not q.is_empty():
+        var cur:int = q.pop_front()
+        for nxt in _neighbors(cur):
+            if dist.has(nxt):
+                continue
+            var nd:int = int(dist[cur]) + 1
+            if nxt in targets:
+                return nd
+            dist[nxt] = nd
+            q.append(nxt)
+    return -1
 
 func _combat(id:int):
     var n = nodes[id]
@@ -196,7 +237,9 @@ func _draw():
         draw_circle(n.p, NODE_R, col)
         draw_circle(n.p, NODE_R, Color(0.75,0.80,0.84), false, 2.0)
         var txt = "?"
-        if n.visited:
+        if clue_flash.has(n.id):
+            txt = str(clue_flash[n.id])
+        elif n.visited:
             match n.kind:
                 Kind.EMPTY: txt = "•"
                 Kind.DEFENSE: txt = "D" if not n.dead else "×"
