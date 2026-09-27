@@ -3,8 +3,10 @@ extends Node2D
 const NODE_R := 24.0
 const COLS := 9
 const ROWS := 6
-const ORIGIN := Vector2(110, 145)
-const STEP := Vector2(100, 82)
+const ORIGIN := Vector2(120, 155)
+# Pointy-top hex-node spacing. Odd rows are offset half a column.
+const HEX_X := 92.0
+const HEX_Y := 76.0
 
 enum Kind { EMPTY, DEFENSE, CORE, UTILITY }
 
@@ -89,22 +91,35 @@ func new_hack():
     nodes.clear(); edges.clear()
     clue_flash.clear(); clue_timer = 0.0
 
+    # Build a regular offset hex grid: each interior node has six neighbours.
+    # This makes the distance clues correspond to the topology you can see.
     for r in ROWS:
         for c in COLS:
             var id = r * COLS + c
-            var jitter = Vector2(rng.randf_range(-12,12), rng.randf_range(-10,10))
+            var x_offset = HEX_X * 0.5 if (r & 1) == 1 else 0.0
             nodes.append({
-                "id":id, "p":ORIGIN + Vector2(c*STEP.x, r*STEP.y) + jitter,
+                "id":id, "p":ORIGIN + Vector2(c * HEX_X + x_offset, r * HEX_Y),
                 "kind":Kind.EMPTY, "revealed":false, "visited":false,
                 "dead":false, "coh":0, "str":0, "used":false
             })
+
+    # Horizontal links plus the two downward diagonals appropriate to each row.
+    # Adding only downward links avoids duplicate edges.
     for r in ROWS:
         for c in COLS:
-            var a = r*COLS+c
-            if c < COLS-1: edges.append(Vector2i(a,a+1))
-            if r < ROWS-1: edges.append(Vector2i(a,a+COLS))
-            if c < COLS-1 and r < ROWS-1 and rng.randf() < .32: edges.append(Vector2i(a,a+COLS+1))
-    start_id = (ROWS/2)*COLS
+            var a = r * COLS + c
+            if c < COLS - 1:
+                edges.append(Vector2i(a, a + 1))
+            if r < ROWS - 1:
+                edges.append(Vector2i(a, (r + 1) * COLS + c))
+                if (r & 1) == 0:
+                    if c > 0:
+                        edges.append(Vector2i(a, (r + 1) * COLS + c - 1))
+                else:
+                    if c < COLS - 1:
+                        edges.append(Vector2i(a, (r + 1) * COLS + c + 1))
+
+    start_id = (ROWS / 2) * COLS
     nodes[start_id].revealed = true
     nodes[start_id].visited = true
 
