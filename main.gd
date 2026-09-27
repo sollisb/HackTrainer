@@ -255,20 +255,30 @@ func _neighbors(id:int) -> Array:
 func _reveal_neighbors(id:int):
     for n in _neighbors(id): nodes[n].revealed = true
 
+func _is_path_anchor(id:int) -> bool:
+    var n = nodes[id]
+    if not n.visited:
+        return false
+    if n.kind == Kind.EMPTY:
+        return true
+    if n.kind == Kind.UTILITY:
+        return true
+    if n.kind == Kind.DEFENSE and n.dead:
+        return true
+    return false
+
 func _can_click(id:int) -> bool:
     if won or lost or not nodes[id].active:
         return false
 
-    # Cleared/consumed nodes form the traversable path but are not actions.
-    if nodes[id].dead:
-        return false
-    if nodes[id].visited and (nodes[id].kind == Kind.EMPTY or nodes[id].kind == Kind.UTILITY):
+    # Already-cleared path nodes are traversal anchors, not clickable actions.
+    if _is_path_anchor(id):
         return false
 
-    # A node is actionable only when it borders the cleared path.
+    # An unexplored node, or a discovered live defense/core, is actionable only
+    # when directly adjacent to the cleared path.
     for neighbor_id in _neighbors(id):
-        var neighbor = nodes[neighbor_id]
-        if neighbor.visited and (neighbor.kind == Kind.EMPTY or neighbor.dead or neighbor.kind == Kind.UTILITY):
+        if _is_path_anchor(neighbor_id):
             return true
     return id == start_id
 
@@ -291,14 +301,12 @@ func _activate(id:int):
                 clue_flash[id] = clue
                 clue_timer = 2.2
                 status = "Clear node — distance clue %d. Smaller numbers lead toward something useful." % clue
-                _reveal_neighbors(id)
             Kind.UTILITY:
                 var heal = [28,24,20][difficulty]
                 virus_coherence = min(max_coherence, virus_coherence + heal)
                 n.used = true
                 n.dead = true
                 status = "Utility found: +%d Virus Coherence." % heal
-                _reveal_neighbors(id)
             Kind.DEFENSE:
                 status = "Defensive subsystem discovered. Click it again to attack."
             Kind.CORE:
@@ -343,7 +351,6 @@ func _combat(id:int):
     n.coh -= virus_strength
     if n.coh <= 0:
         n.dead = true
-        _reveal_neighbors(id)
         if n.kind == Kind.CORE:
             won = true; status = "SYSTEM CORE DESTROYED — hack successful!"
         else:
